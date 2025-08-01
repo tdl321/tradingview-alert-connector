@@ -83,13 +83,129 @@ export class GmxClient extends AbstractDexClient {
 		}
 	};
 
+	getAccountEquity = async (): Promise<number> => {
+		try {
+			if (!this.signer) {
+				console.error('Signer not initialized');
+				return 0;
+			}
+
+			// Get USDC balance (base collateral)
+			const usdcContract = new ethers.Contract(usdc, erc20Abi, this.signer);
+			const usdcBalance = await usdcContract.balanceOf(this.signer.address);
+			const usdcBalanceInUsd = Number(ethers.utils.formatUnits(usdcBalance, usdcDecimal));
+
+			// Get unrealized P&L from open positions (emulating TradingView's strategy.equity)
+			const unrealizedPnL = await this.getUnrealizedPnL();
+
+			// Total equity = USDC balance + unrealized P&L (like TradingView's strategy.equity)
+			const totalEquity = usdcBalanceInUsd + unrealizedPnL;
+
+			console.log('GMX Account USDC Balance:', usdcBalanceInUsd);
+			console.log('GMX Unrealized P&L:', unrealizedPnL);
+			console.log('GMX Total Equity (strategy.equity equivalent):', totalEquity);
+
+			return totalEquity;
+		} catch (error) {
+			console.error('Error getting account equity:', error);
+			return 0;
+		}
+	};
+
+	getUnrealizedPnL = async (): Promise<number> => {
+		try {
+			const readerContract = new ethers.Contract(reader, ReaderAbi, this.signer);
+			
+			// Get all account positions
+			const positions = await readerContract.getAccountPositions(
+				dataStore,
+				this.signer.address,
+				0,
+				ethers.constants.MaxUint256
+			);
+
+			let totalUnrealizedPnL = 0;
+
+			// Calculate unrealized P&L for each position
+			for (const position of positions) {
+				const market = position.addresses.market;
+				const isLong = position.flags.isLong;
+				const sizeInUsd = Number(ethers.utils.formatUnits(position.numbers.sizeInUsd, BASE_DECIMAL));
+				const collateralAmount = Number(ethers.utils.formatUnits(position.numbers.collateralAmount, usdcDecimal));
+
+				// Get current market price
+				const marketPrices = await this.getMarketPrices(market);
+				const currentPrice = marketPrices.indexTokenPrice.min; // Use min price for conservative estimate
+
+				// Calculate unrealized P&L (simplified calculation)
+				// This is a basic approximation - in practice, you'd need more sophisticated P&L calculation
+				const positionValue = sizeInUsd;
+				const unrealizedPnL = isLong ? 
+					(positionValue - collateralAmount) : 
+					(collateralAmount - positionValue);
+				
+				totalUnrealizedPnL += unrealizedPnL;
+			}
+
+			return totalUnrealizedPnL;
+		} catch (error) {
+			console.error('Error calculating unrealized P&L:', error);
+			return 0;
+		}
+	};
+
+	getAvailableCollateral = async (): Promise<number> => {
+		try {
+			if (!this.signer) {
+				console.error('Signer not initialized');
+				return 0;
+			}
+
+			// Get current USDC balance (available collateral)
+			const usdcContract = new ethers.Contract(usdc, erc20Abi, this.signer);
+			const usdcBalance = await usdcContract.balanceOf(this.signer.address);
+			const availableCollateral = Number(ethers.utils.formatUnits(usdcBalance, usdcDecimal));
+
+			console.log('GMX Available Collateral (USDC):', availableCollateral);
+			return availableCollateral;
+		} catch (error) {
+			console.error('Error getting available collateral:', error);
+			return 0;
+		}
+	};
+
+	getMarketPrices = async (marketAddress: string) => {
+		// This would need to be implemented to get current market prices
+		// For now, returning a placeholder
+		return {
+			indexTokenPrice: { min: 1, max: 1 }
+		};
+	};
+
 	buildOrderParams = async (alertMessage: AlertObject) => {
 		const isLong = alertMessage.order == 'buy' ? true : false;
 
 		let orderSize: number;
 
-		// TODO: implement sizeByLeverage for GMX
-		if (alertMessage.size) {
+		// Support percentage-based order sizing using sizeByLeverage
+		if (alertMessage.sizeByLeverage) {
+			const equity = await this.getAccountEquity();
+			const availableCollateral = await this.getAvailableCollateral();
+			
+			// Calculate desired position size (20% of equity)
+			const desiredPositionSize = equity * Number(alertMessage.sizeByLeverage);
+			
+			// Calculate required collateral for desired position
+			const requiredCollateral = desiredPositionSize / Number(process.env.GMX_LEVERAGE);
+			
+			// Protective measure: if required collateral exceeds available, use all available
+			if (requiredCollateral > availableCollateral) {
+				console.log(`Warning: Desired position size (${desiredPositionSize} USD) requires ${requiredCollateral} USD collateral, but only ${availableCollateral} USD available. Using all available collateral.`);
+				orderSize = availableCollateral * Number(process.env.GMX_LEVERAGE);
+			} else {
+				orderSize = desiredPositionSize;
+			}
+		} else if (alertMessage.size) {
 			// convert to USD size
 			orderSize = Math.floor(
 				Number(alertMessage.size) * Number(alertMessage.price)
