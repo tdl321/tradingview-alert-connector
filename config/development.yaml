@@ -1,5 +1,0 @@
-Hyperliquid:
-  Network:
-    host: https://api.hyperliquid.xyz
-  User:
-    leverage: 5

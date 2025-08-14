@@ -1,18 +1,13 @@
 # TradingView Alert Connector for Hyperliquid
 
-A lightweight webhook server that receives TradingView strategy alerts and executes trades on Hyperliquid using the official Python SDK.
-
-## Architecture
-
-This connector uses a **hybrid approach**:
-- **TypeScript/Node.js**: Web server, TradingView webhook handling, and API endpoints
-- **Python**: Hyperliquid SDK integration for trading operations
+A lightweight Python web server that receives TradingView strategy alerts and executes trades on Hyperliquid using the official Python SDK.
 
 ## Features
 
 - **TradingView Webhook Integration**: Receives JSON alerts from TradingView strategies
 - **Hyperliquid Python SDK**: Uses official Hyperliquid SDK for reliable trading
 - **Percentage-based Sizing**: Supports `sizeByLeverage` for dynamic position sizing
+- **Flask Web Server**: Lightweight and fast Python web framework
 - **Render Deployment**: Optimized for hosting on Render
 - **Health Checks**: Built-in endpoints for monitoring
 
@@ -27,15 +22,11 @@ HYPERLIQUID_PRIVATE_KEY=your_private_key_here
 HYPERLIQUID_LEVERAGE=5
 NODE_ENV=production
 PORT=3000
-PYTHON_PATH=python  # or path to your Python executable
 ```
 
 ### 2. Install Dependencies
 
 ```bash
-# Install Node.js dependencies
-npm install
-
 # Install Python dependencies
 pip install -r requirements.txt
 ```
@@ -44,10 +35,13 @@ pip install -r requirements.txt
 
 ```bash
 # Development
-npm run dev
+python app.py
 
 # Production
-npm start
+python start.py
+
+# Or with Gunicorn (recommended for production)
+gunicorn app:app --bind 0.0.0.0:3000
 ```
 
 ## TradingView Alert Format
@@ -86,27 +80,21 @@ Send POST requests to `/` with this JSON format:
 - `GET /accounts` - Account status
 - `POST /` - TradingView webhook (main endpoint)
 
-## Python Integration
+## Python Architecture
 
-The connector uses a Python script (`hyperliquid_trader.py`) that:
+The connector is built entirely in Python:
 
-1. **Initializes Hyperliquid SDK** with your private key
-2. **Handles account operations** (status, equity, balance)
-3. **Executes trades** based on TradingView alerts
-4. **Supports percentage-based sizing** with `sizeByLeverage`
+1. **Flask Web Server**: Handles HTTP requests and TradingView webhooks
+2. **Hyperliquid SDK**: Direct integration with Hyperliquid exchange
+3. **Alert Validation**: Comprehensive validation of TradingView alerts
+4. **Order Management**: Percentage-based sizing and order execution
 
-### Testing Python Script
+### Key Components
 
-```bash
-# Check account status
-python hyperliquid_trader.py status
-
-# Get account equity
-python hyperliquid_trader.py equity
-
-# Place an order (example)
-python hyperliquid_trader.py order '{"market":"BTC","order":"buy","price":45000,"sizeByLeverage":0.2}'
-```
+- **`app.py`**: Main Flask application with all endpoints
+- **`HyperliquidTrader`**: Trading class with SDK integration
+- **`validate_alert()`**: Alert validation function
+- **`start.py`**: Production startup script
 
 ## Deployment on Render
 
@@ -114,31 +102,50 @@ python hyperliquid_trader.py order '{"market":"BTC","order":"buy","price":45000,
 2. **Set environment variables** in Render dashboard:
    - `HYPERLIQUID_PRIVATE_KEY`
    - `HYPERLIQUID_LEVERAGE`
-   - `PYTHON_PATH`
-3. **Install Python dependencies** in build command:
+   - `PORT`
+3. **Set build command**:
    ```bash
    pip install -r requirements.txt
    ```
-4. **Deploy automatically** on push to main branch
+4. **Set start command**:
+   ```bash
+   gunicorn app:app --bind 0.0.0.0:$PORT
+   ```
+5. **Deploy automatically** on push to main branch
 
 ## Development
 
 ### File Structure
 
 ```
-├── src/                    # TypeScript source code
-│   ├── controllers/        # Express routes
-│   ├── services/          # Business logic
-│   └── index.ts           # Main server file
-├── hyperliquid_trader.py  # Python trading script
-├── requirements.txt       # Python dependencies
-└── package.json          # Node.js dependencies
+├── app.py                 # Main Flask application
+├── start.py              # Production startup script
+├── hyperliquid_trader.py # Standalone trading script (legacy)
+├── requirements.txt      # Python dependencies
+└── .env                 # Environment variables
 ```
 
-### Adding New Features
+### Local Development
 
-- **TypeScript**: Add new endpoints in `src/controllers/`
-- **Python**: Extend `hyperliquid_trader.py` with new trading functions
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run in development mode
+python app.py
+
+# Test endpoints
+curl http://localhost:3000/
+curl http://localhost:3000/accounts
+```
+
+### Testing
+
+```bash
+# Test the standalone trader script
+python hyperliquid_trader.py status
+python hyperliquid_trader.py equity
+```
 
 ## License
 

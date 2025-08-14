@@ -3,4 +3,7 @@ eth-account<0.14.0,>=0.10.0
 eth-utils<6.0.0,>=2.1.0
 msgpack<2.0.0,>=1.0.5
 requests<3.0.0,>=2.31.0
-websocket-client<2.0.0,>=1.5.1 
+websocket-client<2.0.0,>=1.5.1
+flask==3.0.0
+python-dotenv==1.0.0
+gunicorn==21.2.0 
