@@ -1,52 +1,69 @@
 import { AlertObject, HyperliquidOrderParams, OrderResult } from '../types';
-import { HyperliquidClient } from 'hyperliquid-js-sdk';
+import { spawn } from 'child_process';
+import { promisify } from 'util';
 import config = require('config');
 import 'dotenv/config';
 
 export class HyperliquidClientService {
-	private client: HyperliquidClient;
-	private wallet: any;
+	private pythonPath: string;
 
 	constructor() {
-		this.initializeClient();
+		this.pythonPath = process.env.PYTHON_PATH || 'python';
 	}
 
-	private initializeClient() {
-		try {
-			if (!process.env.HYPERLIQUID_PRIVATE_KEY) {
-				console.error('HYPERLIQUID_PRIVATE_KEY is not set');
-				return;
-			}
+	private async executePythonCommand(command: string, args: string[] = []): Promise<any> {
+		return new Promise((resolve, reject) => {
+			const pythonProcess = spawn(this.pythonPath, ['hyperliquid_trader.py', command, ...args]);
+			
+			let stdout = '';
+			let stderr = '';
 
-			// Initialize Hyperliquid client
-			// Note: This is a placeholder - you'll need to check the actual Hyperliquid SDK documentation
-			// for the correct initialization method
-			this.client = new HyperliquidClient({
-				network: 'mainnet', // or 'testnet'
-				privateKey: process.env.HYPERLIQUID_PRIVATE_KEY
+			pythonProcess.stdout.on('data', (data) => {
+				stdout += data.toString();
 			});
 
-			console.log('Hyperliquid client initialized');
-		} catch (error) {
-			console.error('Failed to initialize Hyperliquid client:', error);
-		}
+			pythonProcess.stderr.on('data', (data) => {
+				stderr += data.toString();
+			});
+
+			pythonProcess.on('close', (code) => {
+				if (code === 0) {
+					try {
+						const result = JSON.parse(stdout);
+						resolve(result);
+					} catch (error) {
+						reject(new Error(`Failed to parse Python output: ${stdout}`));
+					}
+				} else {
+					reject(new Error(`Python script failed with code ${code}: ${stderr}`));
+				}
+			});
+
+			pythonProcess.on('error', (error) => {
+				reject(new Error(`Failed to execute Python script: ${error.message}`));
+			});
+		});
 	}
 
 	getIsAccountReady = async (): Promise<boolean> => {
 		try {
-			if (!this.client) {
-				return false;
-			}
-
-			// Check account balance/status
-			// This is a placeholder - implement based on Hyperliquid SDK
-			const balance = await this.client.getBalance();
-			console.log('Hyperliquid account balance:', balance);
-			
-			return balance > 0;
+			const result = await this.executePythonCommand('status');
+			console.log('Hyperliquid account status:', result);
+			return result.ready === true;
 		} catch (error) {
 			console.error('Error checking account readiness:', error);
 			return false;
+		}
+	};
+
+	getAccountEquity = async (): Promise<number> => {
+		try {
+			const result = await this.executePythonCommand('equity');
+			console.log('Hyperliquid Account Equity:', result.equity);
+			return result.equity || 0;
+		} catch (error) {
+			console.error('Error getting account equity:', error);
+			return 0;
 		}
 	};
 
@@ -79,63 +96,26 @@ export class HyperliquidClientService {
 		return orderParams;
 	};
 
-	getAccountEquity = async (): Promise<number> => {
-		try {
-			if (!this.client) {
-				console.error('Client not initialized');
-				return 0;
-			}
-
-			// Get account equity from Hyperliquid
-			// This is a placeholder - implement based on Hyperliquid SDK
-			const equity = await this.client.getEquity();
-			console.log('Hyperliquid Account Equity:', equity);
-			
-			return equity;
-		} catch (error) {
-			console.error('Error getting account equity:', error);
-			return 0;
-		}
-	};
-
 	placeOrder = async (alertMessage: AlertObject): Promise<OrderResult> => {
 		try {
-			const orderParams = await this.buildOrderParams(alertMessage);
-			const result = await this.createOrder(orderParams);
+			// Send the entire alert message to Python script
+			const alertJson = JSON.stringify(alertMessage);
+			const result = await this.executePythonCommand('order', [alertJson]);
 			
-			console.log('Order placed successfully:', result);
-			return result;
-		} catch (error) {
-			console.error('Error placing order:', error);
-			throw error;
-		}
-	};
-
-	createOrder = async (orderParams: HyperliquidOrderParams): Promise<OrderResult> => {
-		try {
-			if (!this.client) {
-				throw new Error('Hyperliquid client not initialized');
+			if (!result.success) {
+				throw new Error(result.error || 'Unknown error from Python script');
 			}
 
-			// Place order using Hyperliquid SDK
-			// This is a placeholder - implement based on Hyperliquid SDK
-			const order = await this.client.placeOrder({
-				market: orderParams.market,
-				side: orderParams.side,
-				size: orderParams.size,
-				price: orderParams.price,
-				leverage: orderParams.leverage
-			});
-
 			const orderResult: OrderResult = {
-				orderId: order.id || 'unknown',
-				size: orderParams.size,
-				side: orderParams.side.toUpperCase()
+				orderId: result.order_id,
+				size: result.size,
+				side: result.side
 			};
 
+			console.log('Order placed successfully:', orderResult);
 			return orderResult;
 		} catch (error) {
-			console.error('Error creating order:', error);
+			console.error('Error placing order:', error);
 			throw error;
 		}
 	};

@@ -1,0 +1,6 @@
+hyperliquid-python-sdk==0.16.0
+eth-account<0.14.0,>=0.10.0
+eth-utils<6.0.0,>=2.1.0
+msgpack<2.0.0,>=1.0.5
+requests<3.0.0,>=2.31.0
+websocket-client<2.0.0,>=1.5.1 
