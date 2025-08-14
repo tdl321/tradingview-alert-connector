@@ -1,55 +1,86 @@
-# Tradingview-Alert-Connector
+# TradingView Alert Connector for Hyperliquid
 
-Tradingview-Alert-Connector is a free and noncustodial tool for you to Integrate tradingView alert and execute automated trading for perpetual futures DEXes.
+A lightweight webhook server that receives TradingView strategy alerts and executes trades on Hyperliquid.
 
-Currently supports [dYdX v3](https://dydx.exchange), [dYdX v4](https://dydx.trade/?ref=LawfulBalletF7U), [Perpetual Protocol v2](https://perp.com/), [GMX v2](https://app.gmx.io/#/trade/) and [Bluefin](https://trade.bluefin.io).
+## Features
 
-# Docs
+- **TradingView Webhook Integration**: Receives JSON alerts from TradingView strategies
+- **Hyperliquid Trading**: Executes trades using the Hyperliquid SDK
+- **Percentage-based Sizing**: Supports `sizeByLeverage` for dynamic position sizing
+- **Render Deployment**: Optimized for hosting on Render
+- **Health Checks**: Built-in endpoints for monitoring
 
-https://tv-connector.gitbook.io/docs/
+## Quick Start
 
-# Video Tutorial
+### 1. Environment Variables
 
-dYdX v3:
-https://www.youtube.com/watch?v=I8hB2O2-xx4
+Create a `.env` file with your Hyperliquid credentials:
 
-Perpetual Protocol:
-https://youtu.be/YqrOZW_mnUM
-
-# Prerequisites
-
-- TradingView Account at least Pro plan
-
-https://www.tradingview.com/gopro/
-
-- DEX(e.g. dYdX v4) account with collateral already in place
-
-# Installation
-
-```bash
-git clone https://github.com/junta/tradingview-alert-connector.git
-cd tradingview-alert-connector
-npm install --force
+```env
+HYPERLIQUID_PRIVATE_KEY=your_private_key_here
+HYPERLIQUID_LEVERAGE=5
+NODE_ENV=production
+PORT=3000
 ```
 
-# Quick Start
-
-- rename .env.sample to .env
-- fill environment variables in .env (see [full tutorial](https://tv-connector.gitbook.io/docs/setuup/running-on-local-pc#steps))
-
-### with Docker
+### 2. Install Dependencies
 
 ```bash
-docker-compose build
-docker-compose up -d
+npm install
 ```
 
-### without Docker
+### 3. Start the Server
 
 ```bash
-yarn start
+# Development
+npm run dev
+
+# Production
+npm start
 ```
 
-## Disclaimer
+## TradingView Alert Format
 
-This project is hosted under an MIT OpenSource License. This tool does not guarantee users’ future profit and users have to use this tool on their own responsibility.
+Send POST requests to `/` with this JSON format:
+
+```json
+{
+  "exchange": "hyperliquid",
+  "strategy": "my_strategy",
+  "market": "BTC",
+  "sizeByLeverage": 0.2,
+  "order": "buy",
+  "price": 45000,
+  "position": "long",
+  "reverse": false,
+  "passphrase": "your_passphrase"
+}
+```
+
+### Alert Fields
+
+- `exchange`: Must be "hyperliquid"
+- `strategy`: Your strategy name
+- `market`: Trading pair (e.g., "BTC", "ETH")
+- `sizeByLeverage`: Percentage of equity (0.2 = 20%)
+- `order`: "buy" or "sell"
+- `price`: Current market price
+- `position`: "long" or "short"
+- `reverse`: Boolean for reverse orders
+- `passphrase`: Security passphrase
+
+## API Endpoints
+
+- `GET /` - Health check
+- `GET /accounts` - Account status
+- `POST /` - TradingView webhook (main endpoint)
+
+## Deployment on Render
+
+1. Connect your GitHub repository
+2. Set environment variables in Render dashboard
+3. Deploy automatically on push to main branch
+
+## License
+
+MIT

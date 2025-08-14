@@ -1,32 +1,26 @@
 import express, { Router } from 'express';
-import { validateAlert } from '../services';
-import { DexRegistry } from '../services/dexRegistry';
+import { validateAlert } from '../services/validateAlert';
+import { HyperliquidClientService } from '../services/hyperliquidClient';
 
 const router: Router = express.Router();
 
+// Health check endpoint
 router.get('/', async (req, res) => {
 	res.send('OK');
 });
 
+// Account status endpoint
 router.get('/accounts', async (req, res) => {
-	console.log('Received GET request.');
-
-	const dexRegistry = new DexRegistry();
-	const dexNames = ['dydxv3', 'dydxv4', 'perpetual', 'gmx', 'bluefin'];
-	const dexClients = dexNames.map((name) => dexRegistry.getDex(name));
+	console.log('Received GET request for account status.');
 
 	try {
-		const accountStatuses = await Promise.all(
-			dexClients.map((client) => client.getIsAccountReady())
-		);
+		const hyperliquidClient = new HyperliquidClientService();
+		const isReady = await hyperliquidClient.getIsAccountReady();
 
 		const message = {
-			dYdX_v3: accountStatuses[0], // dydxv3
-			dYdX_v4: accountStatuses[1], // dydxv4
-			PerpetualProtocol: accountStatuses[2], // perpetual
-			GMX: accountStatuses[3], // gmx
-			Bluefin: accountStatuses[4] // bluefin
+			Hyperliquid: isReady
 		};
+		
 		res.send(message);
 	} catch (error) {
 		console.error('Failed to get account readiness:', error);
@@ -34,37 +28,38 @@ router.get('/accounts', async (req, res) => {
 	}
 });
 
+// TradingView webhook endpoint
 router.post('/', async (req, res) => {
-	console.log('Recieved Tradingview strategy alert:', req.body);
-
-	const validated = await validateAlert(req.body);
-	if (!validated) {
-		res.send('Error. alert message is not valid');
-		return;
-	}
-		
-	// set dydxv3 by default for backwards compatibility
-	const exchange = req.body['exchange']?.toLowerCase() || 'dydxv3';
-
-	const dexClient = new DexRegistry().getDex(exchange);
-
-	if (!dexClient) {
-		res.send(`Error. Exchange: ${exchange} is not supported`);
-		return;
-	}
-
-	// TODO: add check if dex client isReady 
+	console.log('Received TradingView strategy alert:', req.body);
 
 	try {
-		const result = await dexClient.placeOrder(req.body);
+		const validated = await validateAlert(req.body);
+		if (!validated) {
+			res.status(400).send('Error: Alert message is not valid');
+			return;
+		}
+
+		const hyperliquidClient = new HyperliquidClientService();
+		
+		// Check if client is ready
+		const isReady = await hyperliquidClient.getIsAccountReady();
+		if (!isReady) {
+			res.status(500).send('Error: Hyperliquid account is not ready');
+			return;
+		}
+
+		// Place the order
+		const result = await hyperliquidClient.placeOrder(req.body);
+		console.log('Order placed successfully:', result);
 
 		res.send('OK');
-		// checkAfterPosition(req.body);
-	} catch (e) {
-		res.send('error');
+	} catch (error) {
+		console.error('Error processing alert:', error);
+		res.status(500).send('Error processing order');
 	}
 });
 
+// Debug endpoint for Sentry
 router.get('/debug-sentry', function mainHandler(req, res) {
 	throw new Error('My first Sentry error!');
 });
